@@ -36,7 +36,7 @@ def create_database_and_table(db_config):
 
 def fetch_daily_stock_data(symbol):
     stock = yf.Ticker(symbol)
-    df = stock.history(period='1d')
+    df = stock.history(period='1mo')
     df.reset_index(inplace=True)
     df['Symbol'] = symbol
     df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')

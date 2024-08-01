@@ -1,66 +1,109 @@
-# techapp/views.py
-from datetime import timedelta
-from django.utils import timezone
-from rest_framework import generics
+# views.py
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import DailyStockData
 from .serializers import DailyStockDataSerializer
-from django.db.models import Max, Min, F, FloatField, ExpressionWrapper
+from django.db.models import F, ExpressionWrapper, FloatField, Subquery, OuterRef
+from django.db.models.functions import Coalesce
+from django.db.models.functions import Cast
+from datetime import timedelta
+from django.utils import timezone
 
-class StockKPIsView(generics.GenericAPIView):
-    def get(self, request, *args, **kwargs):
-        today = timezone.now().date()
-        one_day_ago = today - timedelta(days=1)
-        thirty_days_ago = today - timedelta(days=30)
-        one_year_ago = today - timedelta(days=365)
+class DailyStockDataView(APIView):
+    def get(self, request):
+        symbol = request.query_params.get('symbol')
+        if symbol:
+            stock_data = DailyStockData.objects.filter(symbol=symbol).order_by('-date').first()
+        else:
+            stock_data = DailyStockData.objects.all().order_by('-date')[:20]  # Limit to latest 20 entries
+        serializer = DailyStockDataSerializer(stock_data, many=not symbol)
+        return Response(serializer.data)
 
-        stocks = DailyStockData.objects.values('symbol').distinct()
+class DailyClosingPriceView(APIView):
+    def get(self, request):
+        # Get the latest closing prices for 20 tickers
+        latest_data = (
+            DailyStockData.objects
+            .order_by('-date')[:20]  # Get the latest 20 entries
+            .values('symbol', 'date', 'close')  # Select only the fields needed
+        )
+        
+        if not latest_data:
+            return Response({"error": "No data found in the database"}, status=404)
+        
+        return Response(list(latest_data))
 
-        result = []
 
-        for stock in stocks:
-            symbol = stock['symbol']
-            data = DailyStockData.objects.filter(symbol=symbol)
-            
-            # Daily Closing Price
-            last_entry = data.order_by('-date').first()
-            daily_closing_price = last_entry.close if last_entry else None
+class PriceChangePercentageView(APIView):
+    def get(self, request):
+        # Get the latest date
+        latest_date = DailyStockData.objects.order_by('-date').values('date').first()
+        if not latest_date:
+            return Response({"error": "No data found in the database"}, status=404)
 
-            # Price Change Percentage
-            price_change_percentage_24h = self.calculate_price_change_percentage(symbol, one_day_ago, today)
-            price_change_percentage_30d = self.calculate_price_change_percentage(symbol, thirty_days_ago, today)
-            price_change_percentage_1y = self.calculate_price_change_percentage(symbol, one_year_ago, today)
+        latest_date = latest_date['date']
 
-            # Top Gainers/Losers
-            top_gainers_losers = self.calculate_top_gainers_losers(symbol, one_day_ago, today)
+        # Define periods
+        periods = {
+            '24h': timedelta(days=1),
+            '7d': timedelta(days=7),
+            '30d': timedelta(days=30),
+            '1y': timedelta(days=365)
+        }
 
-            result.append({
-                'symbol': symbol,
-                'daily_closing_price': daily_closing_price,
-                'price_change_percentage_24h': price_change_percentage_24h,
-                'price_change_percentage_30d': price_change_percentage_30d,
-                'price_change_percentage_1y': price_change_percentage_1y,
-                'top_gainers_losers': top_gainers_losers
-            })
+        results = {}
 
-        return Response(result)
+        # Get the latest unique symbols
+        latest_symbols = DailyStockData.objects.filter(date=latest_date).values_list('symbol', flat=True).distinct()[:20]
 
-    def calculate_price_change_percentage(self, symbol, start_date, end_date):
-        try:
-            start_price = DailyStockData.objects.filter(symbol=symbol, date=start_date).values('close').first()['close']
-            end_price = DailyStockData.objects.filter(symbol=symbol, date=end_date).values('close').first()['close']
-            percentage_change = ((end_price - start_price) / start_price) * 100
-            return percentage_change
-        except TypeError:
-            return None
+        for symbol in latest_symbols:
+            symbol_results = {}
+            for period_label, period_delta in periods.items():
+                start_date = latest_date - period_delta
 
-    def calculate_top_gainers_losers(self, symbol, start_date, end_date):
-        data = DailyStockData.objects.filter(symbol=symbol, date__range=(start_date, end_date))
-        gainers_losers = data.order_by('-close')[:10]  # Example: Get top 10
-        return [
-            {
-                'date': entry.date,
-                'close': entry.close
-            }
-            for entry in gainers_losers
-        ]
+                # Get the latest and past data for the symbol
+                latest_data = DailyStockData.objects.filter(symbol=symbol, date=latest_date).first()
+                past_data = DailyStockData.objects.filter(symbol=symbol, date__lte=start_date).order_by('-date').first()
+
+                if latest_data and past_data:
+                    price_change = (latest_data.close - past_data.close) / past_data.close * 100
+                    symbol_results[period_label] = round(price_change, 2)
+                else:
+                    symbol_results[period_label] = None
+
+            if symbol_results:
+                results[symbol] = symbol_results
+
+        if not results:
+            return Response({"error": "No price change data available"}, status=404)
+
+        return Response(results)
+class TopGainersLosersView(APIView):
+    def get(self, request):
+        latest_date = DailyStockData.objects.order_by('-date').values('date').first()
+        if not latest_date:
+            return Response({"error": "No data found in the database"}, status=404)
+        
+        latest_date = latest_date['date']
+        yesterday = latest_date - timedelta(days=1)
+        
+        subquery = DailyStockData.objects.filter(
+            symbol=OuterRef('symbol'),
+            date=yesterday
+        ).values('close')[:1]
+        
+        price_changes = DailyStockData.objects.filter(date=latest_date).annotate(
+            yesterday_close=Coalesce(Subquery(subquery), F('close')),
+            change_percentage=ExpressionWrapper(
+                (F('close') - F('yesterday_close')) / F('yesterday_close') * 100,
+                output_field=FloatField()
+            )
+        ).order_by('-change_percentage')
+        
+        top_gainers = list(price_changes.values('symbol', 'change_percentage')[:5])
+        top_losers = list(price_changes.values('symbol', 'change_percentage').reverse()[:5])
+        
+        return Response({
+            "top_gainers": top_gainers,
+            "top_losers": top_losers
+        })

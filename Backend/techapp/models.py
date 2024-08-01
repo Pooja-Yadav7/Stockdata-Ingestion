@@ -12,3 +12,4 @@ class DailyStockData(models.Model):
 
     class Meta:
         unique_together = ('symbol', 'date')
+        db_table = 'daily_stock_data'  # Use the table created by your script
