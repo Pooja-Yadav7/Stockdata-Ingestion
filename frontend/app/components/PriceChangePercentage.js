@@ -18,7 +18,7 @@ const PriceChangePercentage = () => {
       <table>
         <thead>
           <tr>
-            <th>Symbol</th>
+            <th>Stock Name</th>
             <th>Period</th>
             <th>Price Change Percentage</th>
           </tr>

@@ -1,6 +1,7 @@
 # views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 from .models import DailyStockData
 from .serializers import DailyStockDataSerializer
 from django.db.models import F, ExpressionWrapper, FloatField, Subquery, OuterRef
@@ -107,3 +108,48 @@ class TopGainersLosersView(APIView):
             "top_gainers": top_gainers,
             "top_losers": top_losers
         })
+
+
+class PrometheusMetricsView(APIView):
+    def get(self, request):
+        # Create Prometheus Gauge metrics for each period
+        metrics = {
+            '24h': Gauge('stock_price_change_24h', 'Price change percentage over 24 hours', ['symbol']),
+            '7d': Gauge('stock_price_change_7d', 'Price change percentage over 7 days', ['symbol']),
+            '30d': Gauge('stock_price_change_30d', 'Price change percentage over 30 days', ['symbol']),
+            '1y': Gauge('stock_price_change_1y', 'Price change percentage over 1 year', ['symbol']),
+        }
+
+        # Reusing the logic from PriceChangePercentageView to fetch price change data
+        latest_date = DailyStockData.objects.order_by('-date').values('date').first()
+        if not latest_date:
+            return Response({"error": "No data found in the database"}, status=404)
+
+        latest_date = latest_date['date']
+
+        periods = {
+            '24h': timedelta(days=1),
+            '7d': timedelta(days=7),
+            '30d': timedelta(days=30),
+            '1y': timedelta(days=365)
+        }
+
+        latest_symbols = DailyStockData.objects.filter(date=latest_date).values_list('symbol', flat=True).distinct()[:20]
+
+        for symbol in latest_symbols:
+            for period_label, period_delta in periods.items():
+                start_date = latest_date - period_delta
+
+                latest_data = DailyStockData.objects.filter(symbol=symbol, date=latest_date).first()
+                past_data = DailyStockData.objects.filter(symbol=symbol, date__lte=start_date).order_by('-date').first()
+
+                if latest_data and past_data:
+                    price_change = (latest_data.close - past_data.close) / past_data.close * 100
+                    metrics[period_label].labels(symbol=symbol).set(price_change)
+
+        # Generate Prometheus metrics output
+        metric_data = generate_latest()
+
+        return Response(metric_data, content_type=CONTENT_TYPE_LATEST)
+
+# Add this new view to your URLs if necessary

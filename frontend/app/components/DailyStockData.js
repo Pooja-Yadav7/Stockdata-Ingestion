@@ -18,7 +18,7 @@ const DailyStockData = () => {
       <table>
         <thead>
           <tr>
-            <th>Symbol</th>
+            <th>Stock Name</th>
             <th>Date</th>
             <th>High</th>
             <th>Low</th>

@@ -15,43 +15,45 @@ const TopGainersLosers = () => {
   return (
     <div>
       <h2>Top Gainers and Losers</h2>
-      <div>
-        <h3>Top Gainers</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Change Percentage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.top_gainers.map(item => (
-              <tr key={item.symbol}>
-                <td>{item.symbol}</td>
-                <td>{item.change_percentage.toFixed(2)}%</td>
+      <div className="flex space-x-4">
+        <div className="w-1/2">
+          <h3>Top Gainers</h3>
+          <table className="min-w-full border">
+            <thead>
+              <tr>
+                <th className="border p-2">Stock Name</th>
+                <th className="border p-2">Change Percentage</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h3>Top Losers</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Change Percentage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.top_losers.map(item => (
-              <tr key={item.symbol}>
-                <td>{item.symbol}</td>
-                <td>{item.change_percentage.toFixed(2)}%</td>
+            </thead>
+            <tbody>
+              {data.top_gainers.map(item => (
+                <tr key={item.symbol}>
+                  <td className="border p-2">{item.symbol}</td>
+                  <td className="border p-2">{item.change_percentage.toFixed(2)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="w-1/2">
+          <h3>Top Losers</h3>
+          <table className="min-w-full border">
+            <thead>
+              <tr>
+                <th className="border p-2">Stock Name</th>
+                <th className="border p-2">Change Percentage</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.top_losers.map(item => (
+                <tr key={item.symbol}>
+                  <td className="border p-2">{item.symbol}</td>
+                  <td className="border p-2">{item.change_percentage.toFixed(2)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
