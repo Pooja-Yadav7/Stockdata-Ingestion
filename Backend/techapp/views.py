@@ -9,6 +9,26 @@ from django.db.models.functions import Coalesce
 from django.db.models.functions import Cast
 from datetime import timedelta
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from django.shortcuts import render
+from django.views import View
+from django.http import HttpResponse
+import threading
+import time
+
+STOCK_PRICE_CHANGE = {
+    '24h': Gauge('stock_price_change_24h', 'Price change percentage over 24 hours', ['symbol']),
+    '7d': Gauge('stock_price_change_7d', 'Price change percentage over 7 days', ['symbol']),
+    '30d': Gauge('stock_price_change_30d', 'Price change percentage over 30 days', ['symbol']),
+    '1y': Gauge('stock_price_change_1y', 'Price change percentage over 1 year', ['symbol']),
+}
+
+@method_decorator(login_required, name='dispatch')
+
+class DashboardView(View):
+    def get(self, request):
+        return render(request, 'techapp/dashboard.html')
 
 class DailyStockDataView(APIView):
     def get(self, request):
@@ -110,46 +130,44 @@ class TopGainersLosersView(APIView):
         })
 
 
-class PrometheusMetricsView(APIView):
-    def get(self, request):
-        # Create Prometheus Gauge metrics for each period
-        metrics = {
-            '24h': Gauge('stock_price_change_24h', 'Price change percentage over 24 hours', ['symbol']),
-            '7d': Gauge('stock_price_change_7d', 'Price change percentage over 7 days', ['symbol']),
-            '30d': Gauge('stock_price_change_30d', 'Price change percentage over 30 days', ['symbol']),
-            '1y': Gauge('stock_price_change_1y', 'Price change percentage over 1 year', ['symbol']),
-        }
+def update_metrics():
+    latest_date = DailyStockData.objects.order_by('-date').values('date').first()
+    if not latest_date:
+        return
 
-        # Reusing the logic from PriceChangePercentageView to fetch price change data
-        latest_date = DailyStockData.objects.order_by('-date').values('date').first()
-        if not latest_date:
-            return Response({"error": "No data found in the database"}, status=404)
+    latest_date = latest_date['date']
 
-        latest_date = latest_date['date']
+    periods = {
+        '24h': timedelta(days=1),
+        '7d': timedelta(days=7),
+        '30d': timedelta(days=30),
+        '1y': timedelta(days=365)
+    }
 
-        periods = {
-            '24h': timedelta(days=1),
-            '7d': timedelta(days=7),
-            '30d': timedelta(days=30),
-            '1y': timedelta(days=365)
-        }
+    latest_symbols = DailyStockData.objects.filter(date=latest_date).values_list('symbol', flat=True).distinct()[:20]
 
-        latest_symbols = DailyStockData.objects.filter(date=latest_date).values_list('symbol', flat=True).distinct()[:20]
+    for symbol in latest_symbols:
+        for period_label, period_delta in periods.items():
+            start_date = latest_date - period_delta
 
-        for symbol in latest_symbols:
-            for period_label, period_delta in periods.items():
-                start_date = latest_date - period_delta
+            latest_data = DailyStockData.objects.filter(symbol=symbol, date=latest_date).first()
+            past_data = DailyStockData.objects.filter(symbol=symbol, date__lte=start_date).order_by('-date').first()
 
-                latest_data = DailyStockData.objects.filter(symbol=symbol, date=latest_date).first()
-                past_data = DailyStockData.objects.filter(symbol=symbol, date__lte=start_date).order_by('-date').first()
+            # Ensure both latest_data.close and past_data.close are not None
+            if latest_data and past_data and latest_data.close is not None and past_data.close is not None:
+                price_change = (latest_data.close - past_data.close) / past_data.close * 100
+                STOCK_PRICE_CHANGE[period_label].labels(symbol=symbol).set(price_change)
+            else:
+                STOCK_PRICE_CHANGE[period_label].labels(symbol=symbol).set(float('nan'))  # Handle missing data with NaN
 
-                if latest_data and past_data:
-                    price_change = (latest_data.close - past_data.close) / past_data.close * 100
-                    metrics[period_label].labels(symbol=symbol).set(price_change)
+def metrics_updater():
+    while True:
+        update_metrics()
+        time.sleep(60)  # Update every 60 seconds
 
-        # Generate Prometheus metrics output
-        metric_data = generate_latest()
+# Start the metrics updater thread when the module is imported
+updater_thread = threading.Thread(target=metrics_updater, daemon=True)
+updater_thread.start()
 
-        return Response(metric_data, content_type=CONTENT_TYPE_LATEST)
-
-# Add this new view to your URLs if necessary
+def metrics_view(request):
+    return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
