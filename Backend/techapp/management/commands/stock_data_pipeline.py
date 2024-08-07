@@ -4,13 +4,6 @@ import mysql.connector
 from mysql.connector import Error
 from django.core.management.base import BaseCommand
 
-# Define the database credentials directly
-db_config = {
-    'user': 'root',
-    'password': 'Stock@12345',
-    'host': 'mysql-service',
-    'database': 'stock_data'
-}
 
 def create_database_and_table(user, password, host):
     try:
