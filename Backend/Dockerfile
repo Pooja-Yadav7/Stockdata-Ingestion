@@ -8,7 +8,6 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     gcc \
-    libpq-dev \
     pkg-config \
     default-libmysqlclient-dev \
     build-essential \
