@@ -3,7 +3,7 @@ kind: CronJob
 metadata:
   name: django-cronjob
 spec:
-  schedule: "*/45 * * * *"  
+  schedule: "30 2 * * *"  
 
   jobTemplate:
     spec:
