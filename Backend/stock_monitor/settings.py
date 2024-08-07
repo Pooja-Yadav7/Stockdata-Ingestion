@@ -41,8 +41,11 @@ INSTALLED_APPS = [
     'rest_framework',
     'techapp',
     'stock_monitor',
-    'django_prometheus'
+    'django_prometheus',
+    'users',
 ]
+
+ALLOWED_HOSTS=['*']
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -63,7 +66,30 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000", 
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+        "http://192.168.49.2:30010",
+
+
+]
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'authorization',
+    'x-csrftoken',
 ]
 
 ROOT_URLCONF = 'stock_monitor.urls'
@@ -101,9 +127,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'mysql.connector.django',  # Use mysql-connector-python backend
         'NAME': 'stock_data',                  # Name of your MySQL database
-        'USER': 'pooja07',           # Your MySQL username
+        'USER': 'root',           # Your MySQL username
         'PASSWORD': 'Stock@12345',   # Your MySQL password
-        'HOST': 'localhost',                 # Set to your MySQL host (use 'localhost' for local development)
+        'HOST': 'mysql-service',                 # Set to your MySQL host (use 'localhost' for local development)
         'PORT': '3306',                      # Default MySQL port
     }
 }
@@ -149,3 +175,5 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGIN_URL = '/login/'

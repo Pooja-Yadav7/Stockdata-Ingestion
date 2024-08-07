@@ -17,8 +17,14 @@ Including another URLconf
 # your_project/urls.py
 from django.contrib import admin
 from django.urls import path, include
+from techapp.views import DashboardView
+from users.views import LoginView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('login/', LoginView.as_view(), name='login'), 
+    path('dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('', include('django_prometheus.urls')),
     path('techapp/', include('techapp.urls')),
+    path('', include('users.urls')), # Include the new users app URLs
 ]
